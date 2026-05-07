@@ -11,10 +11,10 @@
     <Version>1.0.1</Version>
     <AssemblyVersion>1.0.1</AssemblyVersion>
     <FileVersion>1.0.1</FileVersion>
-    <!-- Nome no Explorador, Propriedades do ficheiro, atalhos (Velopack usa estes metadados) -->
-    <AssemblyTitle>Canivete Suíço</AssemblyTitle>
-    <Product>Canivete Suíço</Product>
-    <Description>Ferramentas essenciais num só lugar: PDF, vídeo, imagens, YouTube e mais.</Description>
+    <!-- ASCII nestes campos evita nome corrompido no Explorador/instalador (WiX usa Win32 ANSI). UI bonita em AppInfo + HTML. -->
+    <AssemblyTitle>Canivete Suico</AssemblyTitle>
+    <Product>Canivete Suico</Product>
+    <Description>PDF, video, images, YouTube and more in one desktop app.</Description>
     <Company>Marc0zDev</Company>
     <!-- Custom entry point required by Velopack -->
     <StartupObject>CaniveteSuico.App.Program</StartupObject>
@@ -33,6 +33,7 @@
 
   <ItemGroup>
     <Resource Include="Assets\app-icon.png" />
+    <Resource Include="Assets\app.ico" />
   </ItemGroup>
 
   <ItemGroup>

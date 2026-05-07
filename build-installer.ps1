@@ -60,6 +60,7 @@ if (Test-Path $PublishDir) {
 }
 
 # -- dotnet publish (self-contained, win-x64) --------------------------------
+# Self-contained = runtime .NET embutido. Cliente NAO precisa de .NET instalado.
 Write-Host "[*] dotnet publish (Release, win-x64, self-contained)..." -ForegroundColor Cyan
 
 dotnet publish "$Csproj" `
@@ -100,6 +101,7 @@ if (Test-Path $ReleasesDir) {
 # -- vpk pack -----------------------------------------------------------------
 Write-Host "[*] vpk pack (Velopack)..." -ForegroundColor Cyan
 
+# packTitle em ASCII: evita titulo corrompido no setup (encoding do vpk/NSIS no Windows)
 $vpkArgs = @(
     "pack"
     "--packId",    "CaniveteSuico"
@@ -107,8 +109,19 @@ $vpkArgs = @(
     "--packDir",   $PublishDir
     "--mainExe",   "CaniveteSuico.App.exe"
     "--outputDir", $ReleasesDir
-    "--packTitle", "Canivete Suíço"
+    "--packTitle", "Canivete Suico"
+    "--packAuthors", "Marc0zDev"
 )
+
+$splash = Join-Path $AppDir "Assets\app-icon.png"
+if (Test-Path $splash) {
+    $vpkArgs += "--splashImage", $splash
+}
+
+$releaseNotes = Join-Path $Root "RELEASE_NOTES.md"
+if (Test-Path $releaseNotes) {
+    $vpkArgs += "--releaseNotes", $releaseNotes
+}
 
 # Velopack setup shortcut icon (defaults to Assets\app.ico when present)
 if (-not $Icon) {
