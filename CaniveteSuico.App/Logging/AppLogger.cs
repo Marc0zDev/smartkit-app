@@ -4,8 +4,8 @@ using System.Runtime.CompilerServices;
 namespace CaniveteSuico.App.Logging;
 
 /// <summary>
-/// Minimal static logger — writes to Console (visible in the debug console window)
-/// and to a daily rotating log file under %LocalAppData%\CaniveteSuico\logs\.
+/// Minimal static logger — writes to a daily rotating log file under %LocalAppData%\CaniveteSuico\logs\.
+/// In Debug builds only, also mirrors to the attached diagnostic console.
 /// </summary>
 public static class AppLogger
 {
@@ -65,17 +65,23 @@ public static class AppLogger
         string timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
         string line = $"[{timestamp}] [{level}] [{shortFile}.{member}] {message}";
 
-        // Console (visible in the debug window attached by AllocConsole)
-        ConsoleColor prev = Console.ForegroundColor;
-        Console.ForegroundColor = level switch
+#if DEBUG
+        // Console output only when AllocConsole() is used (Debug builds).
+        try
         {
-            "ERROR" => ConsoleColor.Red,
-            "WARN " => ConsoleColor.Yellow,
-            "DEBUG" => ConsoleColor.DarkGray,
-            _       => ConsoleColor.White,
-        };
-        Console.WriteLine(line);
-        Console.ForegroundColor = prev;
+            ConsoleColor prev = Console.ForegroundColor;
+            Console.ForegroundColor = level switch
+            {
+                "ERROR" => ConsoleColor.Red,
+                "WARN " => ConsoleColor.Yellow,
+                "DEBUG" => ConsoleColor.DarkGray,
+                _       => ConsoleColor.White,
+            };
+            Console.WriteLine(line);
+            Console.ForegroundColor = prev;
+        }
+        catch { /* no console in Release */ }
+#endif
 
         // File (thread-safe)
         lock (FileLock)

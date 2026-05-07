@@ -41,28 +41,26 @@ if (-not $Version) {
     [xml]$proj = Get-Content $Csproj
     $Version = $proj.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
     if (-not $Version) {
-        Write-Error "Não foi possível ler <Version> do .csproj. Passe -Version 1.x.x."
+        Write-Error 'Could not read Version from .csproj. Use: .\build-installer.ps1 -Version 1.0.0'
         exit 1
     }
 }
 
 Write-Host ""
-Write-Host "╔══════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "║  CaniveteSuico  •  Build do instalador   ║" -ForegroundColor Cyan
-Write-Host "╚══════════════════════════════════════════╝" -ForegroundColor Cyan
-Write-Host "  Versão  : $Version" -ForegroundColor White
-Write-Host "  Projeto : $AppDir" -ForegroundColor Gray
-Write-Host "  Saída   : $ReleasesDir" -ForegroundColor Gray
+Write-Host "==== CaniveteSuico - installer build ====" -ForegroundColor Cyan
+Write-Host ('  Version : ' + $Version) -ForegroundColor White
+Write-Host ('  Project : ' + $AppDir) -ForegroundColor Gray
+Write-Host ('  Output  : ' + $ReleasesDir) -ForegroundColor Gray
 Write-Host ""
 
-# ── Clean previous publish ───────────────────────────────────────────────────
+# -- Clean previous publish ---------------------------------------------------
 if (Test-Path $PublishDir) {
-    Write-Host "→ Limpando publish anterior…" -ForegroundColor Yellow
+    Write-Host "[*] Cleaning publish folder..." -ForegroundColor Yellow
     Remove-Item $PublishDir -Recurse -Force
 }
 
-# ── dotnet publish (self-contained, win-x64) ─────────────────────────────────
-Write-Host "→ Publicando .NET app (self-contained, win-x64)…" -ForegroundColor Cyan
+# -- dotnet publish (self-contained, win-x64) --------------------------------
+Write-Host "[*] dotnet publish (Release, win-x64, self-contained)..." -ForegroundColor Cyan
 
 dotnet publish "$Csproj" `
     --configuration Release `
@@ -74,19 +72,33 @@ dotnet publish "$Csproj" `
     -p:DebugSymbols=false
 
 if ($LASTEXITCODE -ne 0) {
-    Write-Error "dotnet publish falhou (exit $LASTEXITCODE)."
+    Write-Error ("dotnet publish failed (exit " + $LASTEXITCODE + ").")
     exit $LASTEXITCODE
 }
 
-Write-Host "  ✓ Publicação concluída." -ForegroundColor Green
+# Copy optional runtime tools (yt-dlp, ffmpeg, pandoc) into publish output when present.
+$ToolsSrc = Join-Path $AppDir "tools"
+$ToolsDst = Join-Path $PublishDir "tools"
+if (Test-Path $ToolsSrc) {
+    Write-Host "[*] Copying tools/ into publish output..." -ForegroundColor Cyan
+    New-Item -ItemType Directory -Path $ToolsDst -Force | Out-Null
+    Copy-Item -Path (Join-Path $ToolsSrc '*') -Destination $ToolsDst -Recurse -Force -ErrorAction SilentlyContinue
+}
 
-# ── Ensure releases dir exists ───────────────────────────────────────────────
+Write-Host "  [ok] Publish done." -ForegroundColor Green
+
+# -- Ensure releases dir exists -----------------------------------------------
 if (-not (Test-Path $ReleasesDir)) {
     New-Item -ItemType Directory -Path $ReleasesDir | Out-Null
 }
 
-# ── vpk pack ─────────────────────────────────────────────────────────────────
-Write-Host "→ Empacotando com Velopack…" -ForegroundColor Cyan
+# Clean previous Velopack artifacts so the same version can be rebuilt locally
+if (Test-Path $ReleasesDir) {
+    Remove-Item (Join-Path $ReleasesDir '*') -Force -Recurse -ErrorAction SilentlyContinue
+}
+
+# -- vpk pack -----------------------------------------------------------------
+Write-Host "[*] vpk pack (Velopack)..." -ForegroundColor Cyan
 
 $vpkArgs = @(
     "pack"
@@ -95,37 +107,38 @@ $vpkArgs = @(
     "--packDir",   $PublishDir
     "--mainExe",   "CaniveteSuico.App.exe"
     "--outputDir", $ReleasesDir
-    "--packTitle", "CaniveteSuico"
+    "--packTitle", "Canivete Suíço"
 )
 
-# Add icon if provided and exists
+# Velopack setup shortcut icon (defaults to Assets\app.ico when present)
+if (-not $Icon) {
+    $Icon = Join-Path $AppDir 'Assets\app.ico'
+}
 if ($Icon -and (Test-Path $Icon)) {
-    $vpkArgs += "--icon", $Icon
-    Write-Host "  Ícone    : $Icon" -ForegroundColor Gray
+    $vpkArgs += '--icon', $Icon
+    Write-Host ('  Icon: ' + $Icon) -ForegroundColor Gray
 }
 
 & vpk @vpkArgs
 
 if ($LASTEXITCODE -ne 0) {
-    Write-Error "vpk pack falhou (exit $LASTEXITCODE)."
+    Write-Error ("vpk pack failed (exit " + $LASTEXITCODE + ").")
     exit $LASTEXITCODE
 }
 
-# ── Summary ───────────────────────────────────────────────────────────────────
+# -- Summary ----------------------------------------------------------------
 Write-Host ""
-Write-Host "╔══════════════════════════════════════════╗" -ForegroundColor Green
-Write-Host "║            Build concluído! ✓            ║" -ForegroundColor Green
-Write-Host "╚══════════════════════════════════════════╝" -ForegroundColor Green
+Write-Host "=== Build OK ===" -ForegroundColor Green
 Write-Host ""
-Write-Host "  Arquivos gerados em: $ReleasesDir" -ForegroundColor White
+Write-Host ('  Folder: ' + $ReleasesDir) -ForegroundColor White
 Write-Host ""
 Get-ChildItem $ReleasesDir | ForEach-Object {
     $size = "{0:N0} KB" -f ($_.Length / 1KB)
     Write-Host ("  {0,-50} {1,10}" -f $_.Name, $size) -ForegroundColor Gray
 }
 Write-Host ""
-Write-Host "  Próximos passos:" -ForegroundColor Yellow
-Write-Host "    1. Crie uma Release no GitHub com a tag v$Version"
-Write-Host "    2. Faça upload de TODOS os arquivos da pasta releases/"
-Write-Host "    3. Distribua o CaniveteSuico-Setup.exe para novos usuários"
+Write-Host '  Next steps:' -ForegroundColor Yellow
+Write-Host ('    1. GitHub Release tag: v' + $Version)
+Write-Host '    2. Upload ALL files from releases/ folder to the release assets'
+Write-Host '    3. Give users the generated Setup.exe'
 Write-Host ""

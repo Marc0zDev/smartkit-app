@@ -12,8 +12,21 @@ public partial class MainWindow : System.Windows.Window
     public MainWindow()
     {
         InitializeComponent();
+        Closed += OnClosedCleanup;
         _dispatcher = new BridgeDispatcher(webView);
         InitializeWebView();
+    }
+
+    private void OnClosedCleanup(object? sender, EventArgs e)
+    {
+        try
+        {
+            webView.Dispose();
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Warn($"WebView2 dispose: {ex.Message}");
+        }
     }
 
     private async void InitializeWebView()
@@ -42,7 +55,7 @@ public partial class MainWindow : System.Windows.Window
             {
                 string msg = $"Pasta wwwroot não encontrada:\n{wwwroot}\n\nReconstrua o projeto.";
                 AppLogger.Error(msg);
-                System.Windows.MessageBox.Show(msg, "CaniveteSuico",
+                System.Windows.MessageBox.Show(msg, AppInfo.DisplayName,
                     System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
                 return;
             }
@@ -75,7 +88,7 @@ public partial class MainWindow : System.Windows.Window
             AppLogger.Error(ex, "Falha ao inicializar WebView2");
             System.Windows.MessageBox.Show(
                 $"Erro ao inicializar WebView2:\n\n{ex.Message}",
-                "CaniveteSuico",
+                AppInfo.DisplayName,
                 System.Windows.MessageBoxButton.OK,
                 System.Windows.MessageBoxImage.Error);
         }

@@ -1,0 +1,96 @@
+# Builds the Velopack installer and publishes a GitHub Release when you push a version tag.
+#
+# How to release:
+#   1. Bump <Version> in CaniveteSuico.App/CaniveteSuico.App.csproj (recommended to stay in sync)
+#   2. Commit and push
+#   3. git tag v1.2.3
+#   4. git push origin v1.2.3
+#
+# The workflow extracts 1.2.3 from the tag (leading "v" is stripped).
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Semver without v prefix (e.g. 1.2.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        shell: pwsh
+        run: |
+          if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+            $v = '${{ inputs.version }}'.Trim()
+          } else {
+            $ref = '${{ github.ref_name }}'
+            if ($ref -match '^v(.+)$') { $v = $Matches[1] } else { $v = $ref }
+          }
+          if ($v -notmatch '^\d+\.\d+\.\d+') {
+            Write-Error "Invalid version: $v (expected semver like 1.2.3)"
+            exit 1
+          }
+          "VERSION=$v" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "Building version $v"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install Velopack CLI (vpk)
+        run: dotnet tool install -g vpk
+
+      - name: Add dotnet tools to PATH
+        shell: pwsh
+        run: |
+          $tools = Join-Path $env:USERPROFILE '.dotnet\tools'
+          echo $tools | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Fetch yt-dlp (bundled in installer)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $dir = 'CaniveteSuico.App/tools'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          $url = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe'
+          Invoke-WebRequest -Uri $url -OutFile (Join-Path $dir 'yt-dlp.exe') -UseBasicParsing
+          Write-Host 'yt-dlp.exe downloaded.'
+
+      - name: Build installer (Velopack)
+        shell: pwsh
+        run: |
+          ./build-installer.ps1 -Version $env:VERSION
+
+      - name: Upload artifacts (manual runs only)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: CaniveteSuico-release-${{ env.VERSION }}
+          path: releases/
+
+      - name: Create GitHub Release (tag push only)
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Canivete Suíço ${{ env.VERSION }}
+          generate_release_notes: true
+          files: |
+            releases/*
