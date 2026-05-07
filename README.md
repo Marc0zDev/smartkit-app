@@ -182,12 +182,12 @@ Arquivos gerados em `./releases/`:
 
 | Arquivo | Para quê |
 |---|---|
-| `CaniveteSuico-Setup.exe` | **Instalador para novos usuários** — distribua este |
-| `CaniveteSuico-X.X.X-win-x64-full.nupkg` | Pacote completo de atualização |
-| `CaniveteSuico-X.X.X-win-x64-delta.nupkg` | Pacote delta (só o diff — usuários já instalados baixam este) |
-| `RELEASES-win-x64` | Manifesto de versões consultado pelo app para checar updates |
+| `CaniveteSuico-win-Setup.exe` | **Instalador para novos usuários** — distribua este |
+| `CaniveteSuico-X.X.X-full.nupkg` | Pacote completo de atualização (Velopack) |
+| `CaniveteSuico-win-Portable.zip` | Versão portátil (zip) |
+| `RELEASES`, `*.json` | Manifestos / metadados usados pelo updater |
 
-> **Atenção:** antes de buildar, copie os binários de `tools/` para dentro da pasta `publish/` manualmente, ou adicione uma etapa no `build-installer.ps1` para copiá-los. Os binários não estão no git.
+> **`tools/` (opcional):** coloque `ffmpeg.exe`, `pandoc.exe`, etc. em `CaniveteSuico.App/tools/` antes de rodar `build-installer.ps1`. O script copia essa pasta para o publish (não vai para o git). No CI, o workflow baixa só o `yt-dlp.exe` automaticamente.
 
 ### Customizar a versão antes de buildar
 
@@ -213,35 +213,49 @@ Ou passe diretamente no script:
 
 ## Publicando uma atualização (Velopack + GitHub Releases)
 
-O app verifica atualizações automaticamente 5 segundos após abrir, consultando o GitHub Releases deste repositório.
+O app verifica atualizações automaticamente 5 segundos após abrir, consultando o **GitHub Releases** do repositório configurado em `AppUpdater.cs` (hoje: `Marc0zDev/smartkit-app`).
 
-### Passo a passo
+Para o updater funcionar, cada release publicada no GitHub precisa incluir **todos** os ficheiros gerados em `releases/` (Setup, `.nupkg`, `RELEASES`, JSONs, etc.) — o Velopack usa esses ficheiros para saber qual é a versão nova.
 
-```
-1. Bump de versão
-   └─► Edite <Version> no .csproj (ex: 1.0.0 → 1.1.0)
+### Opção A — Automático (recomendado)
 
-2. Commit + push na branch master
-   └─► git commit -m "release: v1.1.0"
-       git push origin master
+Há um workflow em [`.github/workflows/release.yml`](.github/workflows/release.yml):
 
-3. Build do instalador
-   └─► .\build-installer.ps1 -Version 1.1.0
+1. Atualize `<Version>` no `CaniveteSuico.App.csproj` (ex.: `1.1.0`).
+2. Faça commit e push para `master` (ou a branch que usar para releases).
+3. Crie e envie uma **tag** no formato `v` + semver:
 
-4. Criar Release no GitHub
-   └─► https://github.com/Marc0zDev/smartkit-app/releases/new
-       Tag: v1.1.0
-       Título: CaniveteSuico v1.1.0
-
-5. Upload dos arquivos
-   └─► Faça upload de TODOS os arquivos da pasta ./releases/
-       (Setup.exe + .nupkg(s) + RELEASES-win-x64)
-
-6. Publicar a Release
-   └─► Clique em "Publish release"
+```bash
+git tag v1.1.0
+git push origin v1.1.0
 ```
 
-Quando um usuário já instalado abrir o app, ele verá o banner azul de update no topo e poderá clicar em "Atualizar agora". O download e o restart acontecem automaticamente.
+O GitHub Actions (Windows) vai: instalar `vpk`, opcionalmente baixar `yt-dlp.exe`, executar `build-installer.ps1`, e **criar a Release** com todos os ficheiros em `releases/` anexados.
+
+**Execução manual do workflow** (sem criar tag): no GitHub → **Actions** → **Release** → **Run workflow** → indique a versão (`1.1.0`). Gera artefactos para download; **não** cria Release (útil para testar o build).
+
+### Opção B — Manual no site do GitHub
+
+1. Bump de versão no `.csproj`, commit e push.
+2. Na máquina local: `.\build-installer.ps1 -Version 1.1.0`
+3. Abra **Releases** → **Draft a new release**:  
+   https://github.com/Marc0zDev/smartkit-app/releases/new  
+4. **Choose tag** → crie `v1.1.0` apontando para o commit atual (ou crie a tag pelo Git antes).
+5. Título: por exemplo `CaniveteSuico 1.1.0`.
+6. Arraste **toda** a pasta `releases/` para *Attach binaries* (Setup, nupkg, zip, RELEASES, json).
+7. **Publish release**.
+
+### Opção C — Linha de comandos (`gh` CLI)
+
+Com [GitHub CLI](https://cli.github.com/) instalado e autenticado (`gh auth login`):
+
+```bash
+gh release create v1.1.0 ./releases/* --title "CaniveteSuico 1.1.0" --generate-notes
+```
+
+(Crie a tag `v1.1.0` antes, ou use `--target` com o branch.)
+
+Quando um utilizador já tiver o app instalado, ao abrir verá o banner de atualização se existir uma release mais nova no GitHub com os artefactos corretos.
 
 ---
 

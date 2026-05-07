@@ -9,14 +9,17 @@ public partial class App : System.Windows.Application
     [DllImport("kernel32.dll")]
     private static extern bool AllocConsole();
 
+    [DllImport("kernel32.dll")]
+    private static extern bool FreeConsole();
+
     protected override void OnStartup(StartupEventArgs e)
     {
-        // Open a console window so log output is visible while developing.
-        // In a Release build you can remove this call (or wrap in #if DEBUG).
+#if DEBUG
+        // Diagnostic console only in Debug builds (never in Release / installed app).
         AllocConsole();
-
-        Console.Title = "CaniveteSuico — Console de Diagnóstico";
+        Console.Title = $"{AppInfo.DisplayName} — Console de Diagnóstico";
         Console.OutputEncoding = System.Text.Encoding.UTF8;
+#endif
 
         // Required for PDFsharp to handle PDFs with Windows-1252 / Latin-1 encoded text
         System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
@@ -28,9 +31,14 @@ public partial class App : System.Windows.Application
         DispatcherUnhandledException += (_, args) =>
         {
             AppLogger.Error(args.Exception, "DispatcherUnhandledException");
+#if DEBUG
+            string hint = "Veja o console para detalhes.";
+#else
+            string hint = $"Detalhes no log:\n{AppLogger.CurrentLogPath}";
+#endif
             System.Windows.MessageBox.Show(
-                $"Erro não tratado:\n\n{args.Exception.Message}\n\nVeja o console para detalhes.",
-                "CaniveteSuico", MessageBoxButton.OK, MessageBoxImage.Error);
+                $"Erro não tratado:\n\n{args.Exception.Message}\n\n{hint}",
+                AppInfo.DisplayName, MessageBoxButton.OK, MessageBoxImage.Error);
             args.Handled = true;
         };
 
@@ -54,6 +62,9 @@ public partial class App : System.Windows.Application
     protected override void OnExit(ExitEventArgs e)
     {
         AppLogger.Info("App encerrado.");
+#if DEBUG
+        try { FreeConsole(); } catch { /* ignore */ }
+#endif
         base.OnExit(e);
     }
 }

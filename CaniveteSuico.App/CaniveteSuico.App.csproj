@@ -8,11 +8,17 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <!-- App version — bump this before every release -->
-    <Version>1.0.0</Version>
-    <AssemblyVersion>1.0.0</AssemblyVersion>
-    <FileVersion>1.0.0</FileVersion>
+    <Version>1.0.1</Version>
+    <AssemblyVersion>1.0.1</AssemblyVersion>
+    <FileVersion>1.0.1</FileVersion>
+    <!-- Nome no Explorador, Propriedades do ficheiro, atalhos (Velopack usa estes metadados) -->
+    <AssemblyTitle>Canivete Suíço</AssemblyTitle>
+    <Product>Canivete Suíço</Product>
+    <Description>Ferramentas essenciais num só lugar: PDF, vídeo, imagens, YouTube e mais.</Description>
+    <Company>Marc0zDev</Company>
     <!-- Custom entry point required by Velopack -->
     <StartupObject>CaniveteSuico.App.Program</StartupObject>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -23,6 +29,10 @@
     <PackageReference Include="PuppeteerSharp" Version="24.40.0" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
     <PackageReference Include="Velopack" Version="0.0.1298" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\app-icon.png" />
   </ItemGroup>
 
   <ItemGroup>
