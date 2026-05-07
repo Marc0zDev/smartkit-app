@@ -1,0 +1,120 @@
+name: Publish (master → tag + release)
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-master
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Resolve version from .csproj
+        id: ver
+        shell: pwsh
+        run: |
+          $csproj = Join-Path $env:GITHUB_WORKSPACE 'CaniveteSuico.App/CaniveteSuico.App.csproj'
+          if (-not (Test-Path $csproj)) { throw "csproj não encontrado: $csproj" }
+
+          [xml]$proj = Get-Content $csproj
+          $version = $proj.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+          if (-not $version) { throw "Não foi possível ler <Version> do .csproj" }
+          if ($version -notmatch '^\d+\.\d+\.\d+') { throw "Versão inválida: $version" }
+
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "TAG=v$version"     | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "Version: $version"
+
+      - name: Check if tag already exists
+        id: tagcheck
+        shell: pwsh
+        run: |
+          git fetch --tags --force
+          $tag = $env:TAG
+          $exists = (git tag -l $tag)
+          if ($exists) {
+            Write-Host "Tag already exists: $tag"
+            "TAG_EXISTS=true" | Out-File -FilePath $env:GITHUB_ENV -Append
+          } else {
+            Write-Host "Tag does not exist: $tag"
+            "TAG_EXISTS=false" | Out-File -FilePath $env:GITHUB_ENV -Append
+          }
+
+      - name: Stop (already published)
+        if: env.TAG_EXISTS == 'true'
+        shell: pwsh
+        run: |
+          Write-Host "Nada a publicar. A tag $env:TAG já existe."
+
+      - name: Create and push tag
+        if: env.TAG_EXISTS != 'true'
+        shell: pwsh
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag $env:TAG
+          git push origin $env:TAG
+
+      - name: Install Velopack CLI (vpk)
+        if: env.TAG_EXISTS != 'true'
+        run: dotnet tool install -g vpk
+
+      - name: Add dotnet tools to PATH
+        if: env.TAG_EXISTS != 'true'
+        shell: pwsh
+        run: |
+          $tools = Join-Path $env:USERPROFILE '.dotnet\tools'
+          echo $tools | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Fetch yt-dlp (bundled in installer)
+        if: env.TAG_EXISTS != 'true'
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $dir = 'CaniveteSuico.App/tools'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          $url = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe'
+          Invoke-WebRequest -Uri $url -OutFile (Join-Path $dir 'yt-dlp.exe') -UseBasicParsing
+          Write-Host 'yt-dlp.exe downloaded.'
+
+      - name: Build installer (Velopack)
+        if: env.TAG_EXISTS != 'true'
+        shell: pwsh
+        run: |
+          ./build-installer.ps1 -Version $env:VERSION
+
+      - name: Upload artifacts
+        if: env.TAG_EXISTS != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: CaniveteSuico-release-${{ env.VERSION }}
+          path: releases/
+
+      - name: Create GitHub Release
+        if: env.TAG_EXISTS != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: Canivete Suico ${{ env.VERSION }}
+          generate_release_notes: true
+          files: |
+            releases/*
+
