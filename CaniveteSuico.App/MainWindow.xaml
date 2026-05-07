@@ -8,6 +8,73 @@
         ShowInTaskbar="True"
         WindowStartupLocation="CenterScreen">
     <Grid>
-        <wv2:WebView2 Name="webView" />
+        <wv2:WebView2 Name="webView" Visibility="Hidden" />
+
+        <!-- Native startup / loading UI -->
+        <Border Name="StartupOverlay"
+                Background="#0d1117"
+                BorderBrush="#1f2530"
+                BorderThickness="1">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <StackPanel HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Width="420">
+                    <Image Width="96" Height="96"
+                           Source="/Assets/app.ico"
+                           Stretch="Uniform"
+                           Margin="0,0,0,18" />
+
+                    <TextBlock Text="{x:Static local:AppInfo.DisplayName}"
+                               Foreground="#e6edf3"
+                               FontSize="22"
+                               FontWeight="700"
+                               HorizontalAlignment="Center" />
+
+                    <TextBlock Name="StartupStatusText"
+                               Text="Carregando…"
+                               Foreground="#8b949e"
+                               FontSize="13"
+                               Margin="0,6,0,14"
+                               HorizontalAlignment="Center" />
+
+                    <ProgressBar Name="StartupProgress"
+                                 Height="6"
+                                 IsIndeterminate="True"
+                                 Background="#161b22"
+                                 Foreground="#e11d48" />
+
+                    <StackPanel Name="StartupActions"
+                                Orientation="Horizontal"
+                                HorizontalAlignment="Center"
+                                Margin="0,16,0,0"
+                                Visibility="Collapsed">
+                        <Button Name="RetryButton"
+                                Padding="14,8"
+                                Margin="0,0,10,0"
+                                Click="RetryButton_Click">
+                            Tentar novamente
+                        </Button>
+                        <Button Name="OpenLogsButton"
+                                Padding="14,8"
+                                Click="OpenLogsButton_Click">
+                            Abrir logs
+                        </Button>
+                    </StackPanel>
+                </StackPanel>
+
+                <TextBlock Grid.Row="1"
+                           Margin="12"
+                           Foreground="#6e7681"
+                           FontSize="11"
+                           TextWrapping="Wrap">
+                    Se demorar demais, verifique se o WebView2 (Microsoft Edge) está atualizado.
+                </TextBlock>
+            </Grid>
+        </Border>
     </Grid>
 </Window>
