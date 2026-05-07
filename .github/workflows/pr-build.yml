@@ -1,0 +1,59 @@
+name: PR Build (master)
+
+on:
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-build-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install Velopack CLI (vpk)
+        run: dotnet tool install -g vpk
+
+      - name: Add dotnet tools to PATH
+        shell: pwsh
+        run: |
+          $tools = Join-Path $env:USERPROFILE '.dotnet\tools'
+          echo $tools | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Fetch yt-dlp (bundled in installer)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $dir = 'CaniveteSuico.App/tools'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          $url = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe'
+          Invoke-WebRequest -Uri $url -OutFile (Join-Path $dir 'yt-dlp.exe') -UseBasicParsing
+          Write-Host 'yt-dlp.exe downloaded.'
+
+      - name: Build installer (Velopack)
+        shell: pwsh
+        run: |
+          ./build-installer.ps1
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: CaniveteSuico-pr-build-${{ github.run_number }}
+          path: |
+            releases/
+            publish/
+
