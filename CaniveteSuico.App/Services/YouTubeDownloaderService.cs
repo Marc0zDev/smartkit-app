@@ -26,6 +26,16 @@ public class YouTubeDownloaderService : IBridgeHandler
     private static readonly Regex ProgressRx =
         new(@"\[download\]\s+(\d+(?:\.\d+)?)%", RegexOptions.Compiled);
 
+    private static readonly Regex MergerRx =
+        new(@"\[Merger\]\s+Merging formats into\s+""(.+)""", RegexOptions.Compiled);
+
+    private static readonly string[] FfmpegSearchPaths =
+    [
+        Path.Combine(AppContext.BaseDirectory, "tools", "ffmpeg.exe"),
+        @"C:\ffmpeg\bin\ffmpeg.exe",
+        @"C:\ProgramData\chocolatey\bin\ffmpeg.exe",
+    ];
+
     public async Task HandleAsync(JsonElement data, Action<object> reply)
     {
         string url = data.GetProperty("url").GetString()
@@ -51,11 +61,23 @@ public class YouTubeDownloaderService : IBridgeHandler
         if (!File.Exists(ytDlpPath))
             throw new FileNotFoundException($"yt-dlp.exe not found at: {ytDlpPath}");
 
+        string? ffmpegPath = FindFfmpegOptional();
+        bool hasFfmpeg = !string.IsNullOrWhiteSpace(ffmpegPath);
+
         string outputTemplate = Path.Combine(outputDir, "%(title)s.%(ext)s");
 
-        string formatArgs = BuildFormatArgs(isAudio, quality);
+        string formatArgs = BuildFormatArgs(isAudio, quality, hasFfmpeg);
 
-        string args = $"--newline --no-simulate --no-quiet " +
+        // If ffmpeg is available, pass it explicitly to avoid "ffmpeg not installed" warnings
+        // and guarantee merge of video+audio when using separate streams.
+        string ffmpegArgs = hasFfmpeg
+            ? $" --ffmpeg-location \"{Path.GetDirectoryName(ffmpegPath!) ?? ffmpegPath}\""
+            : "";
+
+        // --no-warnings: don't surface yt-dlp warnings in the UI.
+        // We'll emit our own friendly hint when a dependency is missing.
+        string args = $"--newline --no-simulate --no-quiet --no-warnings" +
+                      ffmpegArgs + " " +
                       $"--print \"YTMETA_T:%(title)s\" " +
                       $"--print \"YTMETA_P:%(playlist_title)s\" " +
                       $"--print \"YTMETA_N:%(n_entries)s\" " +
@@ -89,6 +111,8 @@ public class YouTubeDownloaderService : IBridgeHandler
         bool   plAnnounced   = false;
 
         var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
+
+        bool hintedNoFfmpeg = false;
 
         process.OutputDataReceived += (_, e) =>
         {
@@ -161,6 +185,14 @@ public class YouTubeDownloaderService : IBridgeHandler
                 return;
             }
 
+            // ── Final merged output path ─────────────────────────────────
+            var mm = MergerRx.Match(e.Data);
+            if (mm.Success)
+            {
+                currentFile = mm.Groups[1].Value.Trim();
+                return;
+            }
+
             // ── Audio extraction destination (final .mp3 path) ───────────
             if (e.Data.StartsWith("[ExtractAudio] Destination:", StringComparison.OrdinalIgnoreCase))
             {
@@ -224,6 +256,25 @@ public class YouTubeDownloaderService : IBridgeHandler
         {
             if (e.Data is null) return;
             AppLogger.Debug($"[yt-dlp:err] {e.Data}");
+
+            // Hide noisy yt-dlp warnings from the user-facing log.
+            if (e.Data.StartsWith("WARNING:", StringComparison.OrdinalIgnoreCase))
+            {
+                // Show a single friendly hint when ffmpeg is missing (common cause for split A/V)
+                if (!hasFfmpeg && !hintedNoFfmpeg &&
+                    e.Data.Contains("ffmpeg", StringComparison.OrdinalIgnoreCase))
+                {
+                    hintedNoFfmpeg = true;
+                    reply(new
+                    {
+                        type = "LOG",
+                        action = Action,
+                        message = "Dica: para baixar MP4 com áudio+vídeo na melhor qualidade, instale/adicione o FFmpeg (ffmpeg.exe) na pasta tools/ ou no PATH."
+                    });
+                }
+                return;
+            }
+
             reply(new { type = "LOG", action = Action, message = e.Data });
         };
 
@@ -263,11 +314,26 @@ public class YouTubeDownloaderService : IBridgeHandler
         });
     }
 
-    private static string BuildFormatArgs(bool isAudio, string quality)
+    private static string BuildFormatArgs(bool isAudio, string quality, bool hasFfmpeg)
     {
         if (isAudio)
             return "-x --audio-format mp3 --audio-quality 0";
 
+        // If we don't have ffmpeg, avoid separate video/audio streams (they won't be merged).
+        // Prefer progressive MP4 (video+audio together) to match user expectation.
+        if (!hasFfmpeg)
+        {
+            return quality switch
+            {
+                "1080" => "-f \"best[ext=mp4][height<=1080]/best[height<=1080]\"",
+                "720"  => "-f \"best[ext=mp4][height<=720]/best[height<=720]\"",
+                "480"  => "-f \"best[ext=mp4][height<=480]/best[height<=480]\"",
+                "360"  => "-f \"best[ext=mp4][height<=360]/best[height<=360]\"",
+                _      => "-f \"best[ext=mp4]/best\"",
+            };
+        }
+
+        // With ffmpeg, we can download bestvideo+bestaudio and merge into a single MP4.
         return quality switch
         {
             "1080" => "-f \"bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]\" --merge-output-format mp4",
@@ -276,6 +342,31 @@ public class YouTubeDownloaderService : IBridgeHandler
             "360"  => "-f \"bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=360]+bestaudio/best[height<=360]\" --merge-output-format mp4",
             _      => "--merge-output-format mp4",
         };
+    }
+
+    private static string? FindFfmpegOptional()
+    {
+        foreach (string path in FfmpegSearchPaths)
+            if (File.Exists(path)) return path;
+
+        try
+        {
+            var psi = new ProcessStartInfo("where", "ffmpeg.exe")
+            {
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            var p = Process.Start(psi);
+            if (p is null) return null;
+            string? line = p.StandardOutput.ReadLine();
+            p.WaitForExit();
+            if (!string.IsNullOrWhiteSpace(line) && File.Exists(line.Trim()))
+                return line.Trim();
+        }
+        catch { /* ignore */ }
+
+        return null;
     }
 
     private static string DefaultDownloads() =>

@@ -4,7 +4,7 @@
         xmlns:local="clr-namespace:CaniveteSuico.App"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         Title="{x:Static local:AppInfo.DisplayName}" Height="700" Width="1100"
-        Icon="pack://application:,,,/Assets/app.ico"
+        Icon="/Assets/app.ico"
         ShowInTaskbar="True"
         WindowStartupLocation="CenterScreen">
     <Grid>
